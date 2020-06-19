@@ -1,38 +1,72 @@
 
 declare var rxjs: any;
 
+type Character = string;
+
+type RXTimestampedValue<T> = {
+  value: T;
+  timestamp: number;
+}
+
+type Suggestion = {
+  value: Character;
+  marks: Array<RenderableMorseChar>;
+}
+
+enum KeyAction {
+  Press = 'press',
+  Release = 'release'
+}
+
+enum Mark {
+  Dot = 'dot',
+  Dash = 'dash'
+}
+enum Space {
+  Word = 'word_space',
+  Letter = 'letter_space',
+  Mark = 'mark_space'
+}
+
+type MorseChar = Mark | Space;
+
+enum RenderableMorseChar {
+  Dot = '∙',
+  Dash = '⁃',
+  MarkSpace = '',
+  WordSpace = ' ',
+  Unknown = '𖡄',
+}
+
 // import { fromEvent } from 'rxjs';
 // import { throttleTime, scan } from 'rxjs/operators';
 const UNIT = 100; // 1/10 of a second
-const DOT_CHAR = '∙';
-const DASH_CHAR = '⁃';
-const UNKNOWN_CHAR = '𖡄';
 
 class MyRenderer {
-  signals = [];
-  signalDomEl: HTMLElement;
-  chars = [];
-  charsDomEl: HTMLElement;
-  suggestionsDomEl: HTMLElement;
-  charParts = [];
+  signals: Array<MorseChar> = [];
+  signalDomEl: HTMLTextAreaElement;
+  chars: Array<Character> = [];
+  charsDomEl: HTMLTextAreaElement;
+  suggestionsDomEl: HTMLTextAreaElement;
+  charParts: Array<Mark> = [];
 
   constructor(){
-    this.signalDomEl = document.getElementById('signals');
-    this.charsDomEl = document.getElementById('chars')
-    this.suggestionsDomEl = document.getElementById('suggestions')
+    this.signalDomEl = document.getElementById('signals') as HTMLTextAreaElement;
+    this.charsDomEl = document.getElementById('chars') as HTMLTextAreaElement;
+    this.suggestionsDomEl = document.getElementById('suggestions') as HTMLTextAreaElement;
   }
 
-  addSignal(signal) {
+  addSignal(signal: MorseChar) {
     this.signals.push(signal);
     this.render();
   }
 
-  addChar(char) {
+  addChar(char: Character) {
     this.chars.push(char);
     this.render();
   }
 
-  honeSuggestions(signal) {
+  honeSuggestions(signal: Mark) {
     this.charParts.push(signal);
     this.render();
   }
@@ -40,18 +74,18 @@ class MyRenderer {
     this.charParts = [];
   }
 
-  mapSignalsToRenderable() {
-    return this.signals.map(s => {
+  mapSignalsToRenderable(): Array<RenderableMorseChar> {
+    return this.signals.map((s: MorseChar): RenderableMorseChar => {
       switch (s) {
-        case 'letter_space':
-        case 'mark_space':
-          return '';
-        case 'word_space':
-          return ' ';
-        case 'dot':
-          return DOT_CHAR;
-        case 'dash':
-          return DASH_CHAR;
+        case Space.Letter:
+        case Space.Mark:
+          return RenderableMorseChar.MarkSpace;
+        case Space.Word:
+          return RenderableMorseChar.WordSpace;
+        case Mark.Dot:
+          return RenderableMorseChar.Dot;
+        case Mark.Dash:
+          return RenderableMorseChar.Dash;
         default:
           throw new Error(`Unknown signal: ${s}`);
       }
@@ -59,14 +93,10 @@ class MyRenderer {
   }
 
   render() {
-    if (this.charParts.length < 1) {
-      return;
-    } else {
-      
-    }
+    // TODO: show all when array is empty
     const suggestions = getSuggestions(this.charParts, root);
     this.signalDomEl.value = this.mapSignalsToRenderable().join('');
-    const probableSuggestion = (suggestions.length > 0 ? suggestions[0].value : UNKNOWN_CHAR);
+    const probableSuggestion = (suggestions.length > 0 ? suggestions[0].value : RenderableMorseChar.Unknown);
     this.charsDomEl.value = this.chars.join('') + probableSuggestion;
     if(!suggestions.map){
       console.error(suggestions)
@@ -77,32 +107,32 @@ class MyRenderer {
 
 const renderer = new MyRenderer();
 
-const getSpaceByTime = (dur) => {
+const getSpaceByTime = (dur: number): Space => {
   // word space is 7 units
   // letter space is 3 units
   // mark space is 1 unit
   if(dur > UNIT * 6.5) {
-    return 'word_space';
+    return Space.Word;
   }
   if(dur > UNIT * 2.5) {
-    return 'letter_space';
+    return Space.Letter;
   }
-  return 'mark_space';
+  return Space.Mark;
 }
-const getMarkByTime = (dur) => {
+const getMarkByTime = (dur: number): Mark => {
   // dash is 3 units
   // dot is 1 unit
   if(dur > UNIT * 2.5) {
-    return 'dash';
+    return Mark.Dash;
   }
-  return 'dot';
+  return Mark.Dot;
 }
 
 class MorseNode {
-  value;
-  dashLeaf;
-  dotLeaf;
-  constructor(value, dotLeaf, dashLeaf) {
+  value: Character;
+  dashLeaf: MorseNode;
+  dotLeaf: MorseNode;
+  constructor(value: Character, dotLeaf: MorseNode, dashLeaf: MorseNode) {
     this.value = value;
     this.dotLeaf = dotLeaf;
     this.dashLeaf = dashLeaf;
@@ -146,45 +176,45 @@ const t = new MorseNode('T', n, m);
 // root
 const root =  new MorseNode('', e, t);
 
-const decode = (markArr, morseTree) => {
-  let tree = morseTree;
+const decode = (markArr: Array<Mark>, morseTree: MorseNode): Character => {
+  let tree: MorseNode = morseTree;
   for(let i = 0;i < markArr.length; i++){
-    if(markArr[i] === 'dot'){
+    if(markArr[i] === Mark.Dot){
       tree = tree.dotLeaf;
-    } else if(markArr[i] === 'dash'){
+    } else if(markArr[i] === Mark.Dash){
       tree = tree.dashLeaf;
     } else {
       throw new Error(`Invalid mark: ${markArr[i]}`)
     }
     if(tree === null){
       // no matching character
-      console.warn("no matching character");
-      return UNKNOWN_CHAR;
+      console.warn("no matching character to decode to");
+      return RenderableMorseChar.Unknown;
     }
   }
   return tree.value;
 }
 
-const getSuggestions = (charParts, morseTree) => {
+const getSuggestions = (charParts: Array<Mark>, morseTree: MorseNode) => {
   // traverse tree to end of charparts
-  let tree = morseTree;
+  let tree: MorseNode = morseTree;
   for(let i = 0;i < charParts.length; i++){
-    if(charParts[i] === 'dot'){
+    if(charParts[i] === Mark.Dot){
       tree = tree.dotLeaf;
-    } else if(charParts[i] === 'dash'){
+    } else if(charParts[i] === Mark.Dash){
       tree = tree.dashLeaf;
     } else {
       throw new Error(`Invalid mark: ${charParts[i]}`)
     }
     if(tree === null){
       // no matching character
-      console.warn("no matching character");
+      console.warn("no matching character to suggest");
       return [];
     }
   }
 
   // then traverse and accumulate all possible options
-  const possibleTargets = [];
+  const possibleTargets: Array<Suggestion> = []; // TODO
   // const traverse = (tree, currentPath, possiblePaths) => {
   //   if(tree == null) {
   //     return;
@@ -202,30 +232,30 @@ const getSuggestions = (charParts, morseTree) => {
 
   // }
 
-  const traverse = (tree, possibleTargets, markStack, nodeMarkStr) => {
+  const traverse = (tree: MorseNode, possibleTargets: Array<Suggestion>, markStack: Array<RenderableMorseChar>, nodeMarkStr: RenderableMorseChar) => {
     if(tree == null) {
       return;
     }
-    console.log(tree.value, nodeMarkStr);
+    // console.log(tree.value, nodeMarkStr);
     markStack.push(nodeMarkStr)
     possibleTargets.push({ value: tree.value, marks: [...markStack]} );
 
-    traverse(tree.dotLeaf, possibleTargets, markStack, DOT_CHAR);
-    traverse(tree.dashLeaf, possibleTargets, markStack, DASH_CHAR);
+    traverse(tree.dotLeaf, possibleTargets, markStack, RenderableMorseChar.Dot);
+    traverse(tree.dashLeaf, possibleTargets, markStack, RenderableMorseChar.Dash);
 
     markStack.pop();
   }
 
-  const markStack = charParts.map(p => {
-    if(p === 'dot') {
-      return DOT_CHAR;
+  const markStack: Array<RenderableMorseChar> = charParts.map((p: Mark): RenderableMorseChar => {
+    if(p === Mark.Dot) {
+      return RenderableMorseChar.Dot;
     }
-    if(p === 'dash') {
-      return DASH_CHAR;
+    if(p === Mark.Dash) {
+      return RenderableMorseChar.Dash;
     }
     throw new Error(`Unknown char part: ${p}`);
   });
-  traverse(tree, possibleTargets, markStack, "");
+  traverse(tree, possibleTargets, markStack, RenderableMorseChar.MarkSpace);
   return possibleTargets
 }
 
@@ -236,36 +266,36 @@ const getCharacterFromMarks = (marks) => {
 const stream1 = rxjs
   .merge(
     rxjs.fromEvent(document, "keydown").pipe(
-      // rxjs.operators.scan(count => count + 1, 0)
-      rxjs.operators.filter(e => {
+      // filter to receive only spacebar keydowns
+      rxjs.operators.filter((e: KeyboardEvent) => {
         return e.code === "Space";
       }),
-      // rxjs.operators.map(e => ["press", new Date()])
-      rxjs.operators.map(e => "press"),
+      // emit a press action
+      rxjs.operators.map((e: boolean) => KeyAction.Press),
+      // add a timestamp
       rxjs.operators.timestamp()
     ),
     rxjs.fromEvent(document, "keyup").pipe(
-      // rxjs.operators.scan(count => count + 1, 0)
-      rxjs.operators.filter(e => {
+      // filter to receive only spacebar keyups
+      rxjs.operators.filter((e: KeyboardEvent) => {
         return e.code === "Space";
       }),
-      // rxjs.operators.map(e => ["release", new Date()])
-      rxjs.operators.map(e => "release"),
+      // emit a press release
+      rxjs.operators.map((e: boolean) => KeyAction.Release),
+      // add a timestamp
       rxjs.operators.timestamp()
     )
   )
   .pipe(
-    rxjs.operators.distinctUntilChanged(undefined, e => e.value),
+    rxjs.operators.distinctUntilChanged(undefined, (e: RXTimestampedValue<KeyAction>): KeyAction => e.value),
     //rxjs.operators.bufferCount(2), // consider groupBy instead
     rxjs.operators.pairwise(),
-    rxjs.operators.map(evs => {
-      // const delta = evs[2][1] - evs[1][1];
-      // return delta;
-      const delta = evs[1].timestamp - evs[0].timestamp;
-      if(evs[0].value === 'release' && evs[1].value === 'press'){
+    rxjs.operators.map((evs: Array<RXTimestampedValue<KeyAction>>): MorseChar => {
+      const delta: number = evs[1].timestamp - evs[0].timestamp;
+      if(evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press){
          return getSpaceByTime(delta);
       }
-      if(evs[0].value === 'press' && evs[1].value === 'release'){
+      if(evs[0].value === KeyAction.Press && evs[1].value === KeyAction.Release){
          return getMarkByTime(delta);
       }
       throw new Error(`Unknown event pair: ${evs[0].value}, ${evs[1].value}`);
@@ -273,48 +303,51 @@ const stream1 = rxjs
   )
 
 const stream2 = stream1.pipe(
-    //rxjs.operators.tap(e => console.log('tapped'))
+    // buffer until we get a space character
     rxjs.operators.bufferWhen(() => {
       return stream1.pipe(
-        rxjs.operators.filter(e => { return e === 'word_space' || e === 'letter_space' })
+        rxjs.operators.filter((e: MorseChar) => { return e === Space.Word || e === Space.Letter })
       )
     }),
-    rxjs.operators.map(eArr => { return eArr.filter(eA => {
-        return eA === 'dot' || eA === 'dash'
-    }) })
+    // filter out the space characters
+    rxjs.operators.map((eArr: Array<MorseChar>): Array<MorseChar> => {
+      return eArr.filter((eA: MorseChar): boolean => {
+        return eA === Mark.Dot || eA === Mark.Dash
+      });
+    })
   );
 
 // print characters
-stream2.subscribe(e => {
-  const decoded = decode(e, root)
+stream2.subscribe((e: Array<Mark>) => {
+  const decoded: Character = decode(e, root)
   // console.log(decoded)
   renderer.addChar(decoded)
 })
 // space characters
 // print characters
 stream1.pipe(
-  rxjs.operators.filter(e => { return e === 'word_space' })
-).subscribe(e => {
+  rxjs.operators.filter((e: MorseChar): boolean => { return e === Space.Word})
+).subscribe((e: Space.Word) => {
   // TODO: this screws up
-  // renderer.addChar(" ")
+  // renderer.addChar('_')
 })
 
 // print signals
-stream1.subscribe(e => {
-  // console.log(`Event ${JSON.stringify(e)}`);
+stream1.subscribe((e: MorseChar) => {
+  console.log(`Adding signal`, e);
   renderer.addSignal(e);
 });
 
 // print suggestions
 stream1.pipe(
-  rxjs.operators.filter(e => { return e === 'dot' || e === 'dash' })
-).subscribe(e => {
+  rxjs.operators.filter((e: MorseChar) => { return e === Mark.Dot || e === Mark.Dash })
+).subscribe((e: Mark) => {
   // console.log(`Event ${JSON.stringify(e)}`);
   renderer.honeSuggestions(e);
 });
 stream1.pipe(
-  rxjs.operators.filter(e => { return e === 'word_space' || e === 'letter_space' })
-).subscribe(e => {
+  rxjs.operators.filter((e: MorseChar) => { return e === Space.Word || e === Space.Letter })
+).subscribe((e: Space) => {
   // console.log(`Event ${JSON.stringify(e)}`);
-  renderer.resetSuggestions(e);
+  renderer.resetSuggestions();
 });
