@@ -26,7 +26,8 @@ var RenderableMorseChar;
     RenderableMorseChar["Dot"] = "\u2219";
     RenderableMorseChar["Dash"] = "\u2043";
     RenderableMorseChar["MarkSpace"] = "";
-    RenderableMorseChar["WordSpace"] = "_";
+    RenderableMorseChar["LetterSpace"] = "/";
+    RenderableMorseChar["WordSpace"] = "__";
     RenderableMorseChar["Unknown"] = "\uD81A\uDC44";
 })(RenderableMorseChar || (RenderableMorseChar = {}));
 var RenderableMark;
@@ -170,6 +171,7 @@ var MyRenderer = /** @class */ (function () {
         return this.signals.map(function (s) {
             switch (s) {
                 case Space.Letter:
+                    return RenderableMorseChar.LetterSpace;
                 case Space.Mark:
                     return RenderableMorseChar.MarkSpace;
                 case Space.Word:
@@ -334,12 +336,14 @@ rxjs.operators.buffer(markSpaceStream), rxjs.operators.map(function (e) {
     return getCharacterFromMarks(e);
 }));
 letterStream.subscribe(function (e) {
-    // console.log('letterstream', e);
+    console.log('letterstream', e);
     renderer.addChar(e);
+    renderer.addSignal(Space.Letter);
 });
 var wordStream = letterStream.pipe(
 // buffer until a space - now we are ready to compete the word
-rxjs.operators.tap(function (e) { return console.log('buffering this', e); }), rxjs.operators.buffer(wordSpaceStream), rxjs.operators.map(function (e) {
+// rxjs.operators.tap(e => console.log('buffering this', e)),
+rxjs.operators.buffer(wordSpaceStream), rxjs.operators.map(function (e) {
     return e.join('') + RenderableMorseChar.WordSpace;
 })
 // convert the set of dots and dashes into a word
@@ -366,7 +370,8 @@ rxjs.operators.tap(function (e) { return console.log('buffering this', e); }), r
 );
 wordStream.subscribe(function (e) {
     console.log('wordstream:', e);
+    renderer.addChar(' ');
+    renderer.addSignal(Space.Word);
     // renderer.addChar(e)
 });
 // TODO: suggestions
-// TODO: display spaces between letters and mark groups - display the wordstream

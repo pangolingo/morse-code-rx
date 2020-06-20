@@ -34,7 +34,8 @@ enum RenderableMorseChar {
   Dot = '∙',
   Dash = '⁃',
   MarkSpace = '',
-  WordSpace = '_',
+  LetterSpace = '/',
+  WordSpace = '__',
   Unknown = '𖡄',
 }
 
@@ -205,6 +206,7 @@ class MyRenderer {
     return this.signals.map((s: MorseChar): RenderableMorseChar => {
       switch (s) {
         case Space.Letter:
+          return RenderableMorseChar.LetterSpace;
         case Space.Mark:
           return RenderableMorseChar.MarkSpace;
         case Space.Word:
@@ -405,14 +407,15 @@ const letterStream = sharedDotDashStream.pipe(
   })
 );
 letterStream.subscribe((e: Character) => {
-  // console.log('letterstream', e);
-  renderer.addChar(e)
+  console.log('letterstream', e);
+  renderer.addChar(e);
+  renderer.addSignal(Space.Letter);
 });
 
 
 const wordStream = letterStream.pipe(
   // buffer until a space - now we are ready to compete the word
-  rxjs.operators.tap(e => console.log('buffering this', e)),
+  // rxjs.operators.tap(e => console.log('buffering this', e)),
   rxjs.operators.buffer(wordSpaceStream),
   rxjs.operators.map((e: Array<Character>): string => {
     return e.join('') + RenderableMorseChar.WordSpace
@@ -442,8 +445,10 @@ const wordStream = letterStream.pipe(
 
 wordStream.subscribe((e: Character) => {
   console.log('wordstream:', e);
+  renderer.addChar(' ');
+  renderer.addSignal(Space.Word);
   // renderer.addChar(e)
 });
 
 // TODO: suggestions
-// TODO: display spaces between letters and mark groups - display the wordstream
+
