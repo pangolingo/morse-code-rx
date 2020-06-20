@@ -143,14 +143,18 @@ var getSuggestions = function (charParts, morseTree) {
     traverse(tree, possibleTargets, markStack, null);
     return possibleTargets;
 };
+var getMostLikelySuggestion = function (suggestions) {
+    return (suggestions.length > 0 ? suggestions[0].value : RenderableMorseChar.Unknown);
+};
 var MyRenderer = /** @class */ (function () {
     function MyRenderer() {
         this.signals = [];
         this.chars = [];
-        this.charParts = [];
+        this.charParts = []; // multiple marks that will make up a character
         this.signalDomEl = document.getElementById('signals');
         this.charsDomEl = document.getElementById('chars');
         this.suggestionsDomEl = document.getElementById('suggestions');
+        this.render();
     }
     MyRenderer.prototype.addSignal = function (signal) {
         this.signals.push(signal);
@@ -185,17 +189,27 @@ var MyRenderer = /** @class */ (function () {
             }
         });
     };
+    MyRenderer.prototype.formatSuggestions = function (suggestions) {
+        return suggestions
+            // filter out root
+            .filter(function (s) { return !!s.value; })
+            // alphabetize
+            .sort(function (sa, sb) { return (sa.value < sb.value ? -1 : 1); })
+            // format
+            .map(function (s) { return s.value + ": " + s.marks.join(''); }).join('\n');
+    };
     MyRenderer.prototype.render = function () {
         // TODO: show all when array is empty
-        // const suggestions = getSuggestions(this.charParts, root);
+        var suggestions = getSuggestions(this.charParts, root);
+        var mostLikelySuggestion = getMostLikelySuggestion(suggestions);
         this.signalDomEl.value = this.mapSignalsToRenderable().join('');
-        // const probableSuggestion = (suggestions.length > 0 ? suggestions[0].value : RenderableMorseChar.Unknown);
-        this.charsDomEl.value = this.chars.join('');
+        this.charsDomEl.value = this.chars.join('') + ("" + mostLikelySuggestion);
         // this.charsDomEl.value = this.chars.join('') + probableSuggestion;
         // if(!suggestions.map){
         //   console.error(suggestions)
         // }
         // this.suggestionsDomEl.value = suggestions.map(s => { return `${s.value}: ${s.marks.join('')}`}).join('\n');
+        this.suggestionsDomEl.value = this.formatSuggestions(suggestions);
     };
     return MyRenderer;
 }());
@@ -290,30 +304,38 @@ rxjs.operators.switchMap(function (e) {
 var inputBuffer = rxjs.merge(keyDownStream, keyUpStream).pipe(
 // debounce multiple keydowns/keyups
 rxjs.operators.distinctUntilChanged(undefined, function (e) { return e.value; }));
+var convertInputActionPairsToMorseChars = function (evs) {
+    // console.log('pairs', evs)
+    var delta = evs[1].timestamp - evs[0].timestamp;
+    // this should only get pairs of events staring with press and ending with release
+    // if it doesn't that's a problem
+    if (evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press) {
+        // we got a pair of events for in between presses
+        return null;
+    }
+    if (evs[0].value !== KeyAction.Press && evs[1].value !== KeyAction.Release) {
+        throw new Error("Unknown event pair: " + evs[0].value + ", " + evs[1].value);
+    }
+    return getMarkByTime(delta);
+};
 var dotDashStream = inputBuffer.pipe(
 // buffer until a space - now we are ready to compete the signal
 rxjs.operators.buffer(letterSpaceStream), 
 // convert the sets of keyup/keydown into dots and dashes
 rxjs.operators.mergeMap(function (e) {
-    return rxjs.from(e).pipe(rxjs.operators.pairwise(), rxjs.operators.map(function (evs) {
-        // console.log('pairs', evs)
-        var delta = evs[1].timestamp - evs[0].timestamp;
-        // this should only get pairs of events staring with press and ending with release
-        // if it doesn't that's a problem
-        if (evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press) {
-            // we got a pair of events for in between presses
-            return null;
-        }
-        if (evs[0].value !== KeyAction.Press && evs[1].value !== KeyAction.Release) {
-            throw new Error("Unknown event pair: " + evs[0].value + ", " + evs[1].value);
-        }
-        return getMarkByTime(delta);
-    }), rxjs.operators.filter(function (e) { return e !== null; }), rxjs.operators.endWith(Space.Mark));
+    return rxjs.from(e).pipe(rxjs.operators.pairwise(), rxjs.operators.map(convertInputActionPairsToMorseChars), rxjs.operators.filter(function (e) { return e !== null; }), rxjs.operators.endWith(Space.Mark));
 }));
 // display the signals
 dotDashStream.subscribe(function (e) {
     // console.log(`Adding signal`, e);
+    console.log('dashdotstream:', e);
     renderer.addSignal(e);
+});
+var sharedDotDashStream = dotDashStream.pipe(rxjs.operators.share());
+var suggestionStream = inputBuffer.pipe(rxjs.operators.pairwise(), rxjs.operators.map(convertInputActionPairsToMorseChars), rxjs.operators.filter(function (e) { return e !== null; }));
+suggestionStream.subscribe(function (e) {
+    console.log('suggestionstream', e);
+    renderer.honeSuggestions(e);
 });
 // const flushBufferStream = rxjs.fromEvent(document, "keyup").pipe(
 //   // filter to receive only spacebar keydowns
@@ -321,7 +343,6 @@ dotDashStream.subscribe(function (e) {
 //     return e.code === "KeyG";
 //   })
 // );
-var sharedDotDashStream = dotDashStream.pipe(rxjs.operators.share());
 var markSpaceStream = sharedDotDashStream.pipe(
 // rxjs.operators.startWith(Space.Mark),
 // rxjs.operators.tap(e => console.log('looking for spaces', e)),
@@ -337,6 +358,7 @@ rxjs.operators.buffer(markSpaceStream), rxjs.operators.map(function (e) {
 }));
 letterStream.subscribe(function (e) {
     console.log('letterstream', e);
+    renderer.resetSuggestions();
     renderer.addChar(e);
     renderer.addSignal(Space.Letter);
 });
@@ -370,6 +392,7 @@ rxjs.operators.buffer(wordSpaceStream), rxjs.operators.map(function (e) {
 );
 wordStream.subscribe(function (e) {
     console.log('wordstream:', e);
+    renderer.resetSuggestions();
     renderer.addChar(' ');
     renderer.addSignal(Space.Word);
     // renderer.addChar(e)

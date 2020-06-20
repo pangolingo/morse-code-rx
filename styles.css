@@ -2,3 +2,7 @@ input,
 textarea {
   font-size: 30px;
 }
+
+.highlighted {
+  background-color: yellow;
+}

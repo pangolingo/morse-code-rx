@@ -167,6 +167,9 @@ const getSuggestions = (charParts: Array<Mark>, morseTree: MorseNode) => {
   return possibleTargets
 }
 
+const getMostLikelySuggestion = (suggestions: Array<Suggestion>) => {
+  return (suggestions.length > 0 ? suggestions[0].value : RenderableMorseChar.Unknown)
+}
 
 
 
@@ -176,12 +179,13 @@ class MyRenderer {
   chars: Array<Character> = [];
   charsDomEl: HTMLTextAreaElement;
   suggestionsDomEl: HTMLTextAreaElement;
-  charParts: Array<Mark> = [];
+  charParts: Array<Mark> = []; // multiple marks that will make up a character
 
   constructor(){
     this.signalDomEl = document.getElementById('signals') as HTMLTextAreaElement;
     this.charsDomEl = document.getElementById('chars') as HTMLTextAreaElement;
     this.suggestionsDomEl = document.getElementById('suggestions') as HTMLTextAreaElement;
+    this.render();
   }
 
   addSignal(signal: MorseChar) {
@@ -221,17 +225,28 @@ class MyRenderer {
     })
   }
 
+  formatSuggestions(suggestions: Array<Suggestion>): string {
+    return suggestions
+      // filter out root
+      .filter((s: Suggestion) => !!s.value)
+      // alphabetize
+      .sort((sa: Suggestion, sb: Suggestion) => (sa.value < sb.value ? -1 : 1))
+      // format
+      .map((s: Suggestion) => { return `${s.value}: ${s.marks.join('')}`}).join('\n');
+  }
+
   render() {
     // TODO: show all when array is empty
-    // const suggestions = getSuggestions(this.charParts, root);
+    const suggestions = getSuggestions(this.charParts, root);
+    const mostLikelySuggestion = getMostLikelySuggestion(suggestions);
     this.signalDomEl.value = this.mapSignalsToRenderable().join('');
-    // const probableSuggestion = (suggestions.length > 0 ? suggestions[0].value : RenderableMorseChar.Unknown);
-    this.charsDomEl.value = this.chars.join('');
+    this.charsDomEl.value = this.chars.join('') + `${mostLikelySuggestion}`;
     // this.charsDomEl.value = this.chars.join('') + probableSuggestion;
     // if(!suggestions.map){
     //   console.error(suggestions)
     // }
     // this.suggestionsDomEl.value = suggestions.map(s => { return `${s.value}: ${s.marks.join('')}`}).join('\n');
+    this.suggestionsDomEl.value = this.formatSuggestions(suggestions);
   }
 }
 
@@ -345,6 +360,23 @@ const inputBuffer = rxjs.merge(keyDownStream, keyUpStream).pipe(
   rxjs.operators.distinctUntilChanged(undefined, (e: RXTimestampedValue<KeyAction>): KeyAction => e.value),
   // rxjs.operators.tap(ev => console.log(ev)),
 )
+
+
+const convertInputActionPairsToMorseChars = (evs: Array<RXTimestampedValue<KeyAction>>): MorseChar => {
+  // console.log('pairs', evs)
+  const delta: number = evs[1].timestamp - evs[0].timestamp;
+  // this should only get pairs of events staring with press and ending with release
+  // if it doesn't that's a problem
+  if(evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press){
+    // we got a pair of events for in between presses
+    return null;
+  }
+  if(evs[0].value !== KeyAction.Press && evs[1].value !== KeyAction.Release){
+    throw new Error(`Unknown event pair: ${evs[0].value}, ${evs[1].value}`);
+  }
+  return getMarkByTime(delta);
+}
+
 const dotDashStream = inputBuffer.pipe(
   // buffer until a space - now we are ready to compete the signal
   rxjs.operators.buffer(letterSpaceStream),
@@ -352,20 +384,7 @@ const dotDashStream = inputBuffer.pipe(
   rxjs.operators.mergeMap((e: Array<RXTimestampedValue<KeyAction>>) => {
     return rxjs.from(e).pipe(
       rxjs.operators.pairwise(),
-      rxjs.operators.map((evs: Array<RXTimestampedValue<KeyAction>>): MorseChar => {
-        // console.log('pairs', evs)
-        const delta: number = evs[1].timestamp - evs[0].timestamp;
-        // this should only get pairs of events staring with press and ending with release
-        // if it doesn't that's a problem
-        if(evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press){
-          // we got a pair of events for in between presses
-          return null;
-        }
-        if(evs[0].value !== KeyAction.Press && evs[1].value !== KeyAction.Release){
-          throw new Error(`Unknown event pair: ${evs[0].value}, ${evs[1].value}`);
-        }
-        return getMarkByTime(delta);
-      }),
+      rxjs.operators.map(convertInputActionPairsToMorseChars),
       rxjs.operators.filter((e: MorseChar) => e !== null),
       rxjs.operators.endWith(Space.Mark)
     )
@@ -375,10 +394,23 @@ const dotDashStream = inputBuffer.pipe(
 // display the signals
 dotDashStream.subscribe((e: MorseChar) => {
   // console.log(`Adding signal`, e);
+  console.log('dashdotstream:', e);
   renderer.addSignal(e);
 });
 
+const sharedDotDashStream = dotDashStream.pipe(rxjs.operators.share());
 
+
+const suggestionStream = inputBuffer.pipe(
+  rxjs.operators.pairwise(),
+  rxjs.operators.map(convertInputActionPairsToMorseChars),
+  rxjs.operators.filter((e: MorseChar) => e !== null),
+  // rxjs.operators.endWith(Space.Mark)
+)
+suggestionStream.subscribe((e: Mark) => {
+  console.log('suggestionstream', e);
+  renderer.honeSuggestions(e);
+})
 
 
 // const flushBufferStream = rxjs.fromEvent(document, "keyup").pipe(
@@ -387,7 +419,6 @@ dotDashStream.subscribe((e: MorseChar) => {
 //     return e.code === "KeyG";
 //   })
 // );
-const sharedDotDashStream = dotDashStream.pipe(rxjs.operators.share());
 
 const markSpaceStream = sharedDotDashStream.pipe(
   // rxjs.operators.startWith(Space.Mark),
@@ -408,6 +439,7 @@ const letterStream = sharedDotDashStream.pipe(
 );
 letterStream.subscribe((e: Character) => {
   console.log('letterstream', e);
+  renderer.resetSuggestions();
   renderer.addChar(e);
   renderer.addSignal(Space.Letter);
 });
@@ -445,6 +477,7 @@ const wordStream = letterStream.pipe(
 
 wordStream.subscribe((e: Character) => {
   console.log('wordstream:', e);
+  renderer.resetSuggestions();
   renderer.addChar(' ');
   renderer.addSignal(Space.Word);
   // renderer.addChar(e)
