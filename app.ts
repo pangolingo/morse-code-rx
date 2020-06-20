@@ -418,7 +418,7 @@ const wordStream = letterStream.pipe(
   // rxjs.operators.tap(e => console.log('buffering this', e)),
   rxjs.operators.buffer(wordSpaceStream),
   rxjs.operators.map((e: Array<Character>): string => {
-    return e.join('') + RenderableMorseChar.WordSpace
+    return e.join('')// + RenderableMorseChar.WordSpace
   })
   // convert the set of dots and dashes into a word
   // rxjs.operators.mergeMap((e: Array<Character>) => {

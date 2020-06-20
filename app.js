@@ -344,7 +344,7 @@ var wordStream = letterStream.pipe(
 // buffer until a space - now we are ready to compete the word
 // rxjs.operators.tap(e => console.log('buffering this', e)),
 rxjs.operators.buffer(wordSpaceStream), rxjs.operators.map(function (e) {
-    return e.join('') + RenderableMorseChar.WordSpace;
+    return e.join(''); // + RenderableMorseChar.WordSpace
 })
 // convert the set of dots and dashes into a word
 // rxjs.operators.mergeMap((e: Array<Character>) => {
