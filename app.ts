@@ -372,7 +372,7 @@ const dotDashStream = inputBuffer.pipe(
   
 // display the signals
 dotDashStream.subscribe((e: MorseChar) => {
-  console.log(`Adding signal`, e);
+  // console.log(`Adding signal`, e);
   renderer.addSignal(e);
 });
 
@@ -405,10 +405,45 @@ const letterStream = sharedDotDashStream.pipe(
   })
 );
 letterStream.subscribe((e: Character) => {
-  console.log('letterstream', e);
+  // console.log('letterstream', e);
   renderer.addChar(e)
 });
 
 
+const wordStream = letterStream.pipe(
+  // buffer until a space - now we are ready to compete the word
+  rxjs.operators.tap(e => console.log('buffering this', e)),
+  rxjs.operators.buffer(wordSpaceStream),
+  rxjs.operators.map((e: Array<Character>): string => {
+    return e.join('') + RenderableMorseChar.WordSpace
+  })
+  // convert the set of dots and dashes into a word
+  // rxjs.operators.mergeMap((e: Array<Character>) => {
+  //   return rxjs.from(e).pipe(
+  //     rxjs.operators.map((chars: Array<Character>): string => {
+  //       // console.log('pairs', evs)
+  //       const delta: number = evs[1].timestamp - evs[0].timestamp;
+  //       // this should only get pairs of events staring with press and ending with release
+  //       // if it doesn't that's a problem
+  //       if(evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press){
+  //         // we got a pair of events for in between presses
+  //         return null;
+  //       }
+  //       if(evs[0].value !== KeyAction.Press && evs[1].value !== KeyAction.Release){
+  //         throw new Error(`Unknown event pair: ${evs[0].value}, ${evs[1].value}`);
+  //       }
+  //       return getMarkByTime(delta);
+  //     }),
+  //     rxjs.operators.filter((e: MorseChar) => e !== null),
+  //     rxjs.operators.endWith(Space.Mark)
+  //   )
+  // })
+);
+
+wordStream.subscribe((e: Character) => {
+  console.log('wordstream:', e);
+  // renderer.addChar(e)
+});
+
 // TODO: suggestions
-// TODO: spaces between letters and mark groups
+// TODO: display spaces between letters and mark groups - display the wordstream
