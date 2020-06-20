@@ -349,12 +349,6 @@ const wordSpaceStream = keyUpStream.pipe(
 // letterSpaceStream.subscribe(e => console.log('A letter space has been emitted:', e))
 
 
-
-// const tickStream = rxjs.interval(UNIT);
-// tickStream.pipe(
-//   rxjs.operators.takeUntil(keyDownStream)
-// )
-
 const inputBuffer = rxjs.merge(keyDownStream, keyUpStream).pipe(
   // debounce multiple keydowns/keyups
   rxjs.operators.distinctUntilChanged(undefined, (e: RXTimestampedValue<KeyAction>): KeyAction => e.value),
@@ -395,7 +389,7 @@ const dotDashStream = inputBuffer.pipe(
 dotDashStream.subscribe((e: MorseChar) => {
   // console.log(`Adding signal`, e);
   console.log('dashdotstream:', e);
-  renderer.addSignal(e);
+  // renderer.addSignal(e);
 });
 
 const sharedDotDashStream = dotDashStream.pipe(rxjs.operators.share());
@@ -409,6 +403,7 @@ const suggestionStream = inputBuffer.pipe(
 )
 suggestionStream.subscribe((e: Mark) => {
   console.log('suggestionstream', e);
+  renderer.addSignal(e);
   renderer.honeSuggestions(e);
 })
 
@@ -452,27 +447,6 @@ const wordStream = letterStream.pipe(
   rxjs.operators.map((e: Array<Character>): string => {
     return e.join('')// + RenderableMorseChar.WordSpace
   })
-  // convert the set of dots and dashes into a word
-  // rxjs.operators.mergeMap((e: Array<Character>) => {
-  //   return rxjs.from(e).pipe(
-  //     rxjs.operators.map((chars: Array<Character>): string => {
-  //       // console.log('pairs', evs)
-  //       const delta: number = evs[1].timestamp - evs[0].timestamp;
-  //       // this should only get pairs of events staring with press and ending with release
-  //       // if it doesn't that's a problem
-  //       if(evs[0].value === KeyAction.Release && evs[1].value === KeyAction.Press){
-  //         // we got a pair of events for in between presses
-  //         return null;
-  //       }
-  //       if(evs[0].value !== KeyAction.Press && evs[1].value !== KeyAction.Release){
-  //         throw new Error(`Unknown event pair: ${evs[0].value}, ${evs[1].value}`);
-  //       }
-  //       return getMarkByTime(delta);
-  //     }),
-  //     rxjs.operators.filter((e: MorseChar) => e !== null),
-  //     rxjs.operators.endWith(Space.Mark)
-  //   )
-  // })
 );
 
 wordStream.subscribe((e: Character) => {
@@ -482,6 +456,3 @@ wordStream.subscribe((e: Character) => {
   renderer.addSignal(Space.Word);
   // renderer.addChar(e)
 });
-
-// TODO: suggestions
-
